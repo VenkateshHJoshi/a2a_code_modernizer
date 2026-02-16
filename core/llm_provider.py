@@ -1,59 +1,70 @@
-import google.generativeai as genai
-from typing import Optional
-from config import settings
+# --- IMPORTS & WARNINGS ---
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 import ollama
-import logging
+import google.generativeai as genai
+import os
+from config import Config
+from typing import Optional
 
-logger = logging.getLogger(__name__)
+class HybridLLMProvider:
+    def __init__(self, force_mode=None):
+        """
+        force_mode: 'local', 'cloud', or None (defaults to local-first fallback)
+        """
+        self.force_mode = force_mode
+        self.model_type = "local" 
 
-class HybridLLM:
-    def __init__(self):
-        # Configure Gemini if key exists
-        self.gemini_available = False
-        if settings.gemini_api_key:
+    def _run_local(self, prompt: str, system_prompt: str) -> str:
+        print(f"[*] [LOCAL] Generating with {Config.LOCAL_MODEL_NAME}...")
+        response = ollama.generate(
+            model=Config.LOCAL_MODEL_NAME,
+            system=system_prompt,
+            prompt=prompt,
+            options={'temperature': Config.TEMPERATURE, 'num_ctx': 4096, 'num_predict': 1024}
+        )
+        return response.get('response', '')
+
+    def _run_cloud(self, prompt: str, system_prompt: str) -> str:
+        print(f"[*] [CLOUD] Generating with {Config.FALLBACK_MODEL_NAME}...")
+        
+        # Read API key dynamically
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise ValueError("Gemini API Key is missing in environment variables.")
+            
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(Config.FALLBACK_MODEL_NAME)
+        
+        full_prompt = f"System Instruction: {system_prompt}\n\nUser Prompt: {prompt}"
+        response = model.generate_content(full_prompt)
+        
+        if not response.text:
+            raise ValueError("Gemini returned an empty response.")
+        return response.text
+
+    def generate(self, prompt: str, system_prompt: str) -> str:
+        # 1. EXPLICIT CLOUD MODE
+        if self.force_mode == 'cloud':
             try:
-                genai.configure(api_key=settings.gemini_api_key)
-                self.gemini_model = genai.GenerativeModel(settings.fallback_model)
-                self.gemini_available = True
+                self.model_type = "cloud"
+                return self._run_cloud(prompt, system_prompt)
             except Exception as e:
-                logger.error(f"Gemini setup failed: {e}")
-        
-        self.ollama_client = ollama.Client(host=settings.ollama_host)
+                raise Exception(f"Cloud generation failed: {str(e)}")
 
-    def generate(self, prompt: str, system_prompt: str = "") -> str:
-        """
-        Tries to generate text using Local Ollama.
-        Falls back to Google Gemini if Ollama fails.
-        """
-        # 1. Attempt Local Inference (Ollama)
-        try:
-            logger.info(f"Attempting Ollama inference with {settings.preferred_local_model}...")
-            response = self.ollama_client.chat(
-                model=settings.preferred_local_model,
-                messages=[
-                    {'role': 'system', 'content': system_prompt},
-                    {'role': 'user', 'content': prompt}
-                ]
-            )
-            return response['message']['content']
-        
-        except Exception as e:
-            logger.warning(f"Ollama inference failed: {e}. Attempting fallback...")
-            
-            # 2. Fallback to Cloud (Gemini)
-            if not self.gemini_available:
-                raise RuntimeError("Both Ollama and Gemini are unavailable. Please check your setup.")
-            
+        # 2. EXPLICIT LOCAL MODE (or Default Hybrid)
+        else: 
             try:
-                logger.info(f"Using Gemini fallback ({settings.fallback_model})...")
-                # Construct the prompt for Gemini (Gemini API handles system prompts slightly differently depending on version, 
-                # here we prepend for safety or use specific instruction field)
-                full_prompt = f"{system_prompt}\n\nUser Request:\n{prompt}"
-                
-                response = self.gemini_model.generate_content(full_prompt)
-                return response.text
-            except Exception as gemini_error:
-                logger.error(f"Gemini inference failed: {gemini_error}")
-                raise RuntimeError("All inference methods failed.")
+                self.model_type = "local"
+                return self._run_local(prompt, system_prompt)
+            except Exception as e:
+                print(f"[!] Local model failed: {e}. Fallback to Cloud...")
+                try:
+                    self.model_type = "cloud"
+                    return self._run_cloud(prompt, system_prompt)
+                except Exception as cloud_e:
+                    raise Exception(f"Both Local and Cloud LLM providers failed. Cloud Error: {cloud_e}")
 
-llm_provider = HybridLLM()
+    def get_current_provider(self) -> str:
+        return self.model_type

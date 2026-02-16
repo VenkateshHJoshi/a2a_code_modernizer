@@ -1,36 +1,24 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List
-from enum import Enum
+from typing import Optional, Any, Dict
 
-class AgentRole(str, Enum):
-    ARCHITECT = "architect"
-    BUILDER = "builder"
-    QA = "qa"
-    LIBRARIAN = "librarian"
-    MANAGER = "manager"
-
-class TaskStatus(str, Enum):
-    PENDING = "pending"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    RETRYING = "retrying"
-
-# Standardized Output for every Agent
-class AgentResponse(BaseModel):
-    role: AgentRole
-    status: TaskStatus
-    data: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    # If an agent fails, it must populate this field so the Manager can self-heal
-    error_message: Optional[str] = None
-    raw_content: Optional[str] = None # The actual text/code generated
-
-    class Config:
-        use_enum_values = True
-
-# The Internal Message Packet passed between agents
 class AgentMessage(BaseModel):
-    sender: AgentRole
-    recipient: AgentRole
-    payload: Dict[str, Any]
-    context_id: str
+    """Standard message envelope passed between agents."""
+    sender: str = Field(..., description="Name of the sending agent")
+    recipient: str = Field(..., description="Name of the receiving agent")
+    task_type: str = Field(..., description="Type of task (e.g., 'analyze', 'refactor', 'test')")
+    payload: Dict[str, Any] = Field(default_factory=dict, description="Data payload (code, context, etc.)")
+    timestamp: Optional[str] = None
+
+class TaskResult(BaseModel):
+    """Structured result returned by an agent."""
+    success: bool = Field(..., description="Whether the agent completed the task successfully")
+    data: Optional[Dict[str, Any]] = Field(None, description="The output data (e.g., refactored code)")
+    error_message: Optional[str] = Field(None, description="Detailed error if success is False")
+    syntax_errors: list[str] = Field(default_factory=list, description="List of specific syntax errors found")
+    
+    # --- THIS WAS MISSING ---
+    sender: str = Field(..., description="Name of the agent who produced this result")
+    # ------------------------
+    
+    def to_json_string(self) -> str:
+        return self.model_dump_json(indent=2)

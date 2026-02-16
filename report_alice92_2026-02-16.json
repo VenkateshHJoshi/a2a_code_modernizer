@@ -1,0 +1,21 @@
+{
+  "user": "alice92",
+  "profile": {
+    "age": 22,
+    "net_worth": 166.82
+  },
+  "badges": [
+    "ADULT"
+  ],
+  "recommendations": [
+    "emma_loves_code",
+    "bob_the_dev",
+    "coolcat99"
+  ],
+  "global_metrics": {
+    "total_population": 5,
+    "avg_age": 24.6,
+    "top_earner": "coolcat99",
+    "total_likes": 1966
+  }
+}

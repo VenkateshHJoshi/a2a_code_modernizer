@@ -1,0 +1,22 @@
+{
+  "user": "bob_the_dev",
+  "profile": {
+    "age": 31,
+    "net_worth": 19.2
+  },
+  "badges": [
+    "ADULT",
+    "PYTHONISTA"
+  ],
+  "recommendations": [
+    "emma_loves_code",
+    "alice92",
+    "coolcat99"
+  ],
+  "global_metrics": {
+    "total_population": 5,
+    "avg_age": 24.6,
+    "top_earner": "coolcat99",
+    "total_likes": 1966
+  }
+}
